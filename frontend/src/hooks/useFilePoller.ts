@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useRef } from 'react'
 import { getFile } from '@/lib/api'
-import { upsertLocalFile } from '@/lib/storage'
 import type { FileRecord } from '@/types'
 
 /**
@@ -21,7 +20,6 @@ export function useFilePoller(
     const poll = async () => {
       try {
         const record = await getFile(fileId)
-        upsertLocalFile(record)
         onUpdate(record)
         // Stop polling once terminal
         if (record.status === 'ready' || record.status === 'error') {

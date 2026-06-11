@@ -1,17 +1,18 @@
 'use client'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { FileText, Download, ChevronDown, Check, Clock, AlertCircle } from 'lucide-react'
+import { FileText, Download, ChevronDown, Check, Clock, AlertCircle, Trash2 } from 'lucide-react'
 import type { FileRecord } from '@/types'
 import { PIPELINE_STEPS } from '@/types'
 import { formatBytes, statusColor, statusLabel } from '@/lib/storage'
-import { downloadUrl } from '@/lib/api'
+import { downloadUrl, deleteFile } from '@/lib/api'
 
 interface FileCardProps {
   file: FileRecord
   expanded: boolean
   onToggle: (id: string) => void
+  onDelete: (id: string) => void
 }
 
 const BAR_COLOR: Record<string, string> = {
@@ -126,7 +127,8 @@ function PipelineRow({
   )
 }
 
-export default function FileCard({ file, expanded, onToggle }: FileCardProps) {
+export default function FileCard({ file, expanded, onToggle, onDelete }: FileCardProps) {
+  const [deleting, setDeleting] = useState(false)
   const isActive   = !['ready', 'error'].includes(file.status)
   const barColor   = BAR_COLOR[file.status] ?? 'bg-slate-500'
   const curStepIdx = PIPELINE_STEPS.findIndex((s) => s.key === file.status)
@@ -277,6 +279,24 @@ export default function FileCard({ file, expanded, onToggle }: FileCardProps) {
                     Download file
                   </a>
                 )}
+
+                <button
+                  onClick={async () => {
+                    if (deleting) return
+                    setDeleting(true)
+                    try {
+                      await deleteFile(file.id)
+                      onDelete(file.id)
+                    } catch {
+                      setDeleting(false)
+                    }
+                  }}
+                  disabled={deleting}
+                  className="mt-3 flex items-center justify-center gap-2 py-2 text-sm rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/25 hover:border-red-500/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Delete file'}
+                </button>
 
                 {file.error && (
                   <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">

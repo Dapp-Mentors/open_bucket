@@ -28,6 +28,11 @@ export async function getSiaStatus(): Promise<SiaStatus> {
   return res.json()
 }
 
+export async function deleteFile(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/files/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
 export function downloadUrl(id: string) {
   return `${BASE}/api/files/${id}/download`
 }

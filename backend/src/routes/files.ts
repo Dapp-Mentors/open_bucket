@@ -1,6 +1,7 @@
 import express from 'express'
 import { fileStore } from '../lib/fileStore.js'
 import { getSiaClient } from '../sia/client.js'
+import fs from 'fs'
 
 const router = express.Router()
 
@@ -19,7 +20,7 @@ router.get('/:id', (req, res) => {
   res.json(record)
 })
 
-// Download a pinned file
+// Download a pinned file — streams from Sia storage (or local copy in demo mode)
 router.get('/:id/download', async (req, res) => {
   const record = fileStore.get(req.params.id)
   if (!record) {
@@ -35,22 +36,82 @@ router.get('/:id/download', async (req, res) => {
     const sdk = await getSiaClient()
 
     if (!sdk || record.siaObjectId?.startsWith('demo-sia-')) {
-      // Demo mode: return a placeholder response
+      // Demo mode: serve the local persistent copy if available
+      if (record.dataPath && fs.existsSync(record.dataPath)) {
+        const stat = fs.statSync(record.dataPath)
+        res.setHeader('Content-Type', record.mimeType)
+        res.setHeader('Content-Disposition', `attachment; filename="${record.name}"`)
+        res.setHeader('Content-Length', stat.size)
+        const stream = fs.createReadStream(record.dataPath)
+        stream.pipe(res)
+        return
+      }
+
+      // Fallback if no local copy
       res.setHeader('Content-Type', 'text/plain')
       res.setHeader('Content-Disposition', `attachment; filename="${record.name}"`)
       res.send(`[Demo Mode] File "${record.name}" would be downloaded from Sia here.\nObject ID: ${record.siaObjectId}\nIndexd CID: ${record.indexdCid}`)
       return
     }
 
-    // Real download path would reconstruct the object by ID
-    // For now return a note — implementing full stateful object persistence
-    // requires a persistent DB to map fileId → Sia object reference across restarts
+    // Retrieve the object from Sia and stream it back to the client
+    const obj = await sdk.object(record.siaObjectId!)
+    const stream = sdk.download(obj)
+
     res.setHeader('Content-Type', record.mimeType)
     res.setHeader('Content-Disposition', `attachment; filename="${record.name}"`)
-    res.send(`Sia object ${record.siaObjectId} ready for download.`)
+
+    // Pipe the ReadableStream from Sia into the Express response
+    const reader = stream.getReader()
+    res.flushHeaders()
+
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          res.end()
+          break
+        }
+        res.write(Buffer.from(value))
+      }
+    }
+    pump().catch((err) => {
+      console.error('[download-stream]', err)
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Download failed' })
+      } else {
+        res.end()
+      }
+    })
   } catch (err) {
     console.error('[download]', err)
     res.status(500).json({ error: 'Download failed' })
+  }
+})
+
+// Delete a file — unpins from Sia and removes from all records
+router.delete('/:id', async (req, res) => {
+  const record = fileStore.get(req.params.id)
+  if (!record) {
+    res.status(404).json({ error: 'File not found' })
+    return
+  }
+
+  try {
+    const sdk = await getSiaClient()
+
+    // If connected to real Sia and object is not a demo object, delete it
+    if (sdk && record.siaObjectId && !record.siaObjectId.startsWith('demo-sia-')) {
+      await sdk.deleteObject(record.siaObjectId)
+      console.log(`[delete] Unpinned Sia object ${record.siaObjectId} for file ${req.params.id}`)
+    }
+
+    // Remove from our records
+    fileStore.delete(req.params.id)
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[delete]', err)
+    res.status(500).json({ error: 'Delete failed' })
   }
 })
 

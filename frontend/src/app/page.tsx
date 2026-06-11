@@ -7,7 +7,6 @@ import FileCard from '@/components/FileCard'
 import UploadModal from '@/components/UploadModal'
 import HowItWorks from '@/components/HowItWorks'
 import ToastContainer, { type ToastData } from '@/components/Toast'
-import { loadLocalFiles, upsertLocalFile } from '@/lib/storage'
 import { listFiles } from '@/lib/api'
 import { useFilePoller } from '@/hooks/useFilePoller'
 import type { FileRecord } from '@/types'
@@ -20,13 +19,10 @@ export default function Dashboard() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastData[]>([])
 
+  // Load files from backend on mount
   useEffect(() => {
-    const local = loadLocalFiles()
-    if (local.length) setFiles(local)
-
     listFiles().then((remote) => {
       if (remote.length) {
-        remote.forEach(upsertLocalFile)
         setFiles(remote)
       }
     })
@@ -45,7 +41,6 @@ export default function Dashboard() {
       else next.unshift(record)
       return next
     })
-    upsertLocalFile(record)
     if (record.status === 'ready') {
       addToast('success', `"${record.name}" is pinned and ready.`)
       setActivePollId(null)
@@ -63,6 +58,11 @@ export default function Dashboard() {
     setExpandedId(fileId)
     addToast('info', 'Pipeline started — tracking progress…')
   }
+
+  const handleDelete = useCallback((fileId: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== fileId))
+    addToast('info', 'File deleted successfully.')
+  }, [])
 
   const ready  = files.filter((f) => f.status === 'ready').length
   const active = files.filter((f) => !['ready', 'error'].includes(f.status)).length
@@ -177,6 +177,7 @@ export default function Dashboard() {
                       onToggle={(id) =>
                         setExpandedId((prev) => (prev === id ? null : id))
                       }
+                      onDelete={handleDelete}
                     />
                   ))}
                 </div>
@@ -194,7 +195,7 @@ export default function Dashboard() {
                 ['Storage',  'Sia Network'],
                 ['Events',   'Inngest'],
                 ['Metadata', 'Indexd (simulated)'],
-                ['UI',       'Next.js + Tailwind'],
+                ['Persistence', 'SQLite'],
               ].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">{k}</span>
