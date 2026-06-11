@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getSiaStatus } from '@/lib/api'
 import type { SiaStatus } from '@/types'
 import { Layers, Upload, Wifi, WifiOff } from 'lucide-react'
@@ -11,9 +11,20 @@ interface NavProps {
 
 export default function Nav({ onUploadClick }: NavProps) {
   const [sia, setSia] = useState<SiaStatus | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
+    // Initial fetch
     getSiaStatus().then(setSia)
+
+    // Poll every 10 seconds to track mode changes
+    intervalRef.current = setInterval(() => {
+      getSiaStatus().then(setSia)
+    }, 10_000)
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
   }, [])
 
   return (
@@ -33,16 +44,16 @@ export default function Nav({ onUploadClick }: NavProps) {
         <div className="flex items-center gap-3">
           {sia && (
             <span
-              className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-mono ${
+              className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-mono transition-colors duration-300 ${
                 sia.connected
                   ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5'
-                  : 'text-amber-400  border-amber-500/30  bg-amber-500/5'
+                  : 'text-amber-400 border-amber-500/30 bg-amber-500/5'
               }`}
             >
               {sia.connected
                 ? <Wifi    className="h-3 w-3" />
                 : <WifiOff className="h-3 w-3" />}
-              {sia.connected ? 'Sia live' : 'Demo mode'}
+              {sia.connected ? 'Sia live' : sia.mode === 'demo' ? 'Demo mode' : `Offline (${sia.reason ?? 'unknown'})`}
             </span>
           )}
 

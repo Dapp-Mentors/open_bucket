@@ -18,7 +18,9 @@ export interface FileRecord {
 export interface SiaStatus {
   connected: boolean
   mode: 'demo' | 'live'
+  configMode?: string
   indexer: string
+  reason?: string
 }
 
 export const PIPELINE_STEPS = [

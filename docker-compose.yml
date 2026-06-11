@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ─── Inngest Dev Server ──────────────────────────────────────────────────────
   inngest:
@@ -22,7 +20,12 @@ services:
       INNGEST_EVENT_KEY: "local"
       INNGEST_BASE_URL: "http://inngest:8288"
       SIA_INDEXER_URL: "https://sia.storage"
-      # A stable demo App ID (32 bytes hex) — replace with your own for production
+      # SIA_MODE: auto | live | demo
+      #   auto  = try to connect, fall back to demo if unreachable (default)
+      #   live  = require connection, fail if unreachable
+      #   demo  = skip connection, always use local file storage
+      SIA_MODE: "auto"
+      # A stable App ID (32 bytes hex) — replace with your own for production
       SIA_APP_ID: "6f70656e6275636b657400000000000000000000000000000000000000000000"
       SIA_APP_NAME: "OpenBucket"
       SIA_APP_DESCRIPTION: "Decentralized file pinning demo"

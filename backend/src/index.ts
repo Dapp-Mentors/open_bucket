@@ -39,13 +39,19 @@ app.listen(PORT, async () => {
   // This triggers the approval-flow (if needed) immediately so the operator
   // sees the ACTION REQUIRED URL without having to upload a file first.
   console.log('[Sia] Initialising Sia client…')
-  const sdk = await getSiaClient()
-  if (sdk) {
-    console.log('[Sia] Successfully connected to Sia indexer')
-  } else {
-    const { isDemoMode } = await import('./sia/client.js')
-    if (isDemoMode()) {
-      console.log('[Sia] Running in demo mode (no real Sia connection)')
+  try {
+    const sdk = await getSiaClient()
+    if (sdk) {
+      console.log('[Sia] Successfully connected to Sia indexer')
+    } else {
+      const { isDemoMode, getSiaReason } = await import('./sia/client.js')
+      if (isDemoMode()) {
+        console.log('[Sia] Running in demo mode:', getSiaReason())
+      }
     }
+  } catch (err) {
+    // If SIA_MODE=live fails, log the error but don't crash the server
+    console.error('[Sia] Failed to initialise Sia client:', (err as Error).message)
+    console.log('[Sia] The server is still running — uploads will fail until Sia is connected.')
   }
 })
