@@ -6,6 +6,7 @@ import { uploadAndPinFn } from './inngest/functions.js'
 import uploadRouter from './routes/upload.js'
 import filesRouter from './routes/files.js'
 import siaRouter from './routes/sia.js'
+import { getSiaClient } from './sia/client.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 4000
@@ -31,6 +32,20 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() })
 })
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`OpenBucket backend running on :${PORT}`)
+
+  // ── Eagerly initialise the Sia client on boot ─────────────────────────────
+  // This triggers the approval-flow (if needed) immediately so the operator
+  // sees the ACTION REQUIRED URL without having to upload a file first.
+  console.log('[Sia] Initialising Sia client…')
+  const sdk = await getSiaClient()
+  if (sdk) {
+    console.log('[Sia] Successfully connected to Sia indexer')
+  } else {
+    const { isDemoMode } = await import('./sia/client.js')
+    if (isDemoMode()) {
+      console.log('[Sia] Running in demo mode (no real Sia connection)')
+    }
+  }
 })

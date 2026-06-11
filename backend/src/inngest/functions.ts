@@ -7,11 +7,16 @@ import fs from 'fs'
  * Main upload + pin pipeline.
  *
  * Steps:
- *  1. read-temp-file        – read bytes from disk into serialisable form
- *  2. sia-upload-and-pin    – upload bytes to Sia + immediately pin the object
- *  3. sia-pin               – record the pin timestamp
- *  4. indexd-register       – mock Indexd registration
- *  5. complete              – mark the file ready + clean up temp
+ *  1. sia-upload-and-pin    – read file from disk, upload bytes to Sia + pin
+ *  2. sia-pin               – record the pin timestamp
+ *  3. indexd-register       – mock Indexd registration
+ *  4. complete              – mark the file ready + clean up temp
+ *
+ * IMPORTANT: We do NOT read file bytes into an array and pass them across
+ * Inngest step boundaries. Doing so produces a huge JSON payload that
+ * exceeds Inngest's response size limit. Instead, each step that needs
+ * the file reads it directly from disk — the file path is still valid
+ * because the handler and Inngest dev server run in the same container.
  */
 export const uploadAndPinFn = inngest.createFunction(
   { id: 'upload-and-pin', name: 'Upload & Pin File' },
@@ -26,89 +31,81 @@ export const uploadAndPinFn = inngest.createFunction(
       size: number
     }
 
-    // ── Step 1: Read temp file ───────────────────────────────────────────────
-    const fileBytes = await step.run('read-temp-file', async () => {
-      fileStore.updateStatus(fileId, 'uploading', 10)
-      const buf = fs.readFileSync(filePath)
-      return Array.from(buf) // must be JSON-serialisable to cross step boundaries
-    })
+    try {
+      // ── Step 1: Upload to Sia + pin ──────────────────────────────────────────
+      const siaObjectId = await step.run('sia-upload-and-pin', async () => {
+        fileStore.updateStatus(fileId, 'uploading', 10)
+        const sdk = await getSiaClient()
 
-    // ── Step 2: Upload to Sia + pin ──────────────────────────────────────────
-    //
-    // WHY upload and pin are in the same step:
-    //   Inngest steps are isolated — the PinnedObject handle returned by
-    //   sdk.upload() is an in-memory object that cannot be serialised across
-    //   step boundaries. If upload and pin were separate steps, the handle
-    //   would be lost and sdk.pinObject() would have nothing to act on.
-    //
-    // WHY we use new Blob([uint8]).stream() instead of Readable.toWeb():
-    //   The Sia WASM SDK expects a browser-spec Web ReadableStream.
-    //   `new Blob([...]).stream()` produces exactly that in both browser and
-    //   Node 18+. The Readable.toWeb() adapter works at the Node level but
-    //   can trip up the WASM boundary in some environments.
-    const siaObjectId = await step.run('sia-upload-and-pin', async () => {
-      fileStore.updateStatus(fileId, 'uploading', 40)
-      const sdk = await getSiaClient()
+        if (!sdk) {
+          // Demo mode: no real Sia connection — simulate with a fake ID
+          await sleep(1500)
+          fileStore.updateStatus(fileId, 'uploading', 65)
+          return `demo-sia-${fileId}`
+        }
 
-      if (!sdk) {
-        // Demo mode: no real Sia connection — simulate with a fake ID
-        await sleep(1200)
+        // Read file from disk directly — avoids serialising huge byte arrays
+        // across Inngest step boundaries
+        fileStore.updateStatus(fileId, 'uploading', 40)
+        const buf = fs.readFileSync(filePath)
+
+        const { PinnedObject } = await import('@siafoundation/sia-storage')
+
+        const uint8 = new Uint8Array(buf)
+        const webStream = new Blob([uint8]).stream()
+
+        const obj = await sdk.upload(new PinnedObject(), webStream)
         fileStore.updateStatus(fileId, 'uploading', 65)
-        return `demo-sia-${fileId}`
-      }
 
-      const { PinnedObject } = await import('@siafoundation/sia-storage')
+        // pinObject must be called on the live handle in the same step
+        await sdk.pinObject(obj)
 
-      // ── FIX 3: Use Blob.stream() to produce a Web ReadableStream ─────────
-      // This matches the exact pattern shown in the Sia Node.js quickstart docs.
-      const uint8 = new Uint8Array(fileBytes as number[])
-      const webStream = new Blob([uint8]).stream()
-
-      const obj = await sdk.upload(new PinnedObject(), webStream)
-      fileStore.updateStatus(fileId, 'uploading', 65)
-
-      // pinObject must be called on the live handle in the same step
-      await sdk.pinObject(obj)
-
-      return obj.id()
-    })
-
-    // ── Step 3: Record pin timestamp ─────────────────────────────────────────
-    const pinnedAt = await step.run('sia-pin', async () => {
-      fileStore.updateStatus(fileId, 'pinning', 75)
-
-      if (siaObjectId.startsWith('demo-sia-')) {
-        await sleep(900)
-      }
-
-      return new Date().toISOString()
-    })
-
-    // ── Step 4: "Indexd" registration (simulated) ────────────────────────────
-    const indexdCid = await step.run('indexd-register', async () => {
-      fileStore.updateStatus(fileId, 'indexing', 88)
-      // Indexd is a real NCI metadata service but has no public write API.
-      // We simulate the registration here for demo purposes.
-      await sleep(700)
-      return `did:indexd:${siaObjectId.slice(0, 16)}`
-    })
-
-    // ── Step 5: Finalise ─────────────────────────────────────────────────────
-    await step.run('complete', async () => {
-      fileStore.updateStatus(fileId, 'ready', 100, {
-        siaObjectId,
-        pinnedAt,
-        indexdCid,
+        return obj.id()
       })
-      // Clean up temp file
-      try {
-        fs.unlinkSync(filePath)
-      } catch {
-        // already gone, fine
-      }
-    })
 
-    return { fileId, siaObjectId, indexdCid, pinnedAt }
+      // ── Step 2: Record pin timestamp ─────────────────────────────────────────
+      const pinnedAt = await step.run('sia-pin', async () => {
+        fileStore.updateStatus(fileId, 'pinning', 75)
+
+        if (siaObjectId.startsWith('demo-sia-')) {
+          await sleep(900)
+        }
+
+        return new Date().toISOString()
+      })
+
+      // ── Step 3: "Indexd" registration (simulated) ────────────────────────────
+      const indexdCid = await step.run('indexd-register', async () => {
+        fileStore.updateStatus(fileId, 'indexing', 88)
+        // Indexd is a real NCI metadata service but has no public write API.
+        // We simulate the registration here for demo purposes.
+        await sleep(700)
+        return `did:indexd:${siaObjectId.slice(0, 16)}`
+      })
+
+      // ── Step 4: Finalise ─────────────────────────────────────────────────────
+      await step.run('complete', async () => {
+        fileStore.updateStatus(fileId, 'ready', 100, {
+          siaObjectId,
+          pinnedAt,
+          indexdCid,
+        })
+        // Clean up temp file
+        try {
+          fs.unlinkSync(filePath)
+        } catch {
+          // already gone, fine
+        }
+      })
+
+      return { fileId, siaObjectId, indexdCid, pinnedAt }
+    } catch (err) {
+      // ── Global error handler: propagate failure to frontend ────────────────
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[upload-and-pin] Pipeline failed for file ${fileId}:`, message)
+      fileStore.setError(fileId, message)
+      throw err
+    }
   }
 )
 
