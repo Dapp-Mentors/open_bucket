@@ -17,6 +17,7 @@ services:
       - "4000:4000"
     environment:
       PORT: "4000"
+      DATA_DIR: "/app/data"
       INNGEST_EVENT_KEY: "local"
       INNGEST_BASE_URL: "http://inngest:8288"
       SIA_INDEXER_URL: "https://sia.storage"

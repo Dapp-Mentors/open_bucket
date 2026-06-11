@@ -4,13 +4,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { inngest } from '../inngest/client.js'
 import { fileStore, type FileRecord } from '../lib/fileStore.js'
 import { getSiaClient } from '../sia/client.js'
+import { UPLOADS_DIR } from '../lib/config.js'
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
 
 const router = express.Router()
-
-const DATA_DIR = '/app/data/uploads'
 
 const upload = multer({
   dest: path.join(os.tmpdir(), 'openbucket'),
@@ -33,8 +32,8 @@ router.post('/', upload.single('file'), async (req, res) => {
     let dataPath: string | undefined
     if (isDemo) {
       // In demo mode, keep a persistent copy for downloads
-      fs.mkdirSync(DATA_DIR, { recursive: true })
-      dataPath = path.join(DATA_DIR, fileId)
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+      dataPath = path.join(UPLOADS_DIR, fileId)
       fs.copyFileSync(req.file.path, dataPath)
     }
 

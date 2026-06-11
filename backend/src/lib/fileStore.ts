@@ -7,6 +7,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { DB_PATH } from './config.js'
 
 export type FileStatus = 'queued' | 'uploading' | 'pinning' | 'indexing' | 'ready' | 'error'
 
@@ -27,7 +28,6 @@ export interface FileRecord {
   dataPath?: string
 }
 
-const DB_PATH = process.env.FILE_DB_PATH ?? '/app/data/files.db'
 
 /** Coerce undefined values to null for SQLite compatibility */
 function toRow(record: FileRecord) {

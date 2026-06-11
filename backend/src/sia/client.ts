@@ -9,15 +9,13 @@
  * In live/auto mode with no stored key, the approval URL is printed to logs.
  * The operator must open it in a browser to approve the app.
  *
- * Once approved, the app key is stored in /app/data/appkey.hex and reused
+ * Once approved, the app key is stored in the data directory and reused
  * on subsequent boots without requiring re-approval.
  */
 
 import fs from 'fs'
 import path from 'path'
-
-const KEY_PATH = '/app/data/appkey.hex'
-const PHRASE_PATH = '/app/data/phrase.enc'
+import { KEY_PATH, PHRASE_PATH } from '../lib/config.js'
 
 let siaInstance: Awaited<ReturnType<typeof buildClient>> | null = null
 let available = false // true = SDK connected and usable
