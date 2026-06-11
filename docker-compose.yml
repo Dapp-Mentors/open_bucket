@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  # ─── Inngest Dev Server ──────────────────────────────────────────────────────
+  inngest:
+    image: inngest/inngest:latest
+    command: inngest dev -u http://backend:4000/api/inngest --no-discovery
+    ports:
+      - "8288:8288"
+    networks:
+      - openbucket
+
+  # ─── Backend (Express + Inngest handler + Sia SDK) ───────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: "4000"
+      INNGEST_EVENT_KEY: "local"
+      INNGEST_BASE_URL: "http://inngest:8288"
+      SIA_INDEXER_URL: "https://sia.storage"
+      # A stable demo App ID (32 bytes hex) — replace with your own for production
+      SIA_APP_ID: "6f70656e6275636b657400000000000000000000000000000000000000000000"
+      SIA_APP_NAME: "OpenBucket"
+      SIA_APP_DESCRIPTION: "Decentralized file pinning demo"
+      SIA_APP_SERVICE_URL: "http://localhost:3000"
+    depends_on:
+      - inngest
+    networks:
+      - openbucket
+    volumes:
+      - sia-keys:/app/data
+
+  # ─── Frontend (Next.js) ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: "http://localhost:4000"
+      NEXT_PUBLIC_INNGEST_URL: "http://localhost:8288"
+    depends_on:
+      - backend
+    networks:
+      - openbucket
+
+networks:
+  openbucket:
+    driver: bridge
+
+volumes:
+  sia-keys:

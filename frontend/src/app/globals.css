@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  @apply bg-navy-900 text-slate-200 antialiased;
+  font-family: var(--font-inter);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-navy-800;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-navy-600 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-aqua-600;
+}
+
+/* Progress bar fill animation */
+@keyframes progressFill {
+  from { width: 0% }
+}
+
+/* Subtle grid pattern overlay */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Glow on active pipeline step */
+.step-active {
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 16px rgba(6, 182, 212, 0.1);
+}
+
+/* File drag hover */
+.drop-active {
+  @apply border-aqua-500 bg-aqua-500/5;
+}
