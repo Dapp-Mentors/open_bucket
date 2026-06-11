@@ -31,17 +31,17 @@ export default function Nav({ onUploadClick }: NavProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          {/* Sia connection badge */}
           {sia && (
-            <span className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-mono ${
-              sia.connected
-                ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5'
-                : 'text-amber-400 border-amber-500/30 bg-amber-500/5'
-            }`}>
+            <span
+              className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-mono ${
+                sia.connected
+                  ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5'
+                  : 'text-amber-400  border-amber-500/30  bg-amber-500/5'
+              }`}
+            >
               {sia.connected
-                ? <Wifi className="h-3 w-3" />
-                : <WifiOff className="h-3 w-3" />
-              }
+                ? <Wifi    className="h-3 w-3" />
+                : <WifiOff className="h-3 w-3" />}
               {sia.connected ? 'Sia live' : 'Demo mode'}
             </span>
           )}

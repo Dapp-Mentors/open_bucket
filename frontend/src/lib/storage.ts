@@ -37,12 +37,12 @@ export function formatBytes(bytes: number): string {
 
 export function statusColor(status: string): string {
   switch (status) {
-    case 'ready':    return 'text-emerald-400'
-    case 'error':    return 'text-red-400'
+    case 'ready':     return 'text-emerald-400'
+    case 'error':     return 'text-red-400'
     case 'uploading': return 'text-aqua-400'
-    case 'pinning':  return 'text-violet-400'
-    case 'indexing': return 'text-yellow-400'
-    default:         return 'text-slate-400'
+    case 'pinning':   return 'text-violet-400'
+    case 'indexing':  return 'text-yellow-400'
+    default:          return 'text-slate-400'
   }
 }
 

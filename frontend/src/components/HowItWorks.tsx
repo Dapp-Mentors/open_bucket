@@ -17,7 +17,7 @@ const STEPS = [
   {
     n: '03',
     title: 'Sia encrypts and distributes the data',
-    body: 'The Sia SDK uploads your file, erasure-codes it into redundant shards, and spreads them across independent storage providers worldwide. Nobody can read your data — including Sia.',
+    body: 'The Sia SDK uploads your file, erasure-codes it into redundant shards, and spreads them across independent storage providers worldwide.',
   },
   {
     n: '04',
@@ -27,7 +27,7 @@ const STEPS = [
   {
     n: '05',
     title: 'Indexd registers metadata',
-    body: 'A simulated Indexd call creates a DID-based content identifier linking your file to the Sia object. In production this would talk to a real Indexd node.',
+    body: 'A simulated Indexd call creates a DID-based content identifier linking your file to the Sia object.',
   },
 ]
 
@@ -45,6 +45,7 @@ export default function HowItWorks() {
           <ChevronDown className="h-4 w-4 text-slate-400" />
         </motion.span>
       </button>
+
       <AnimatePresence>
         {open && (
           <motion.div
@@ -57,7 +58,9 @@ export default function HowItWorks() {
             <div className="px-5 pb-5 space-y-4 border-t border-navy-700/40 pt-4">
               {STEPS.map((s) => (
                 <div key={s.n} className="flex gap-3">
-                  <span className="text-xs font-mono text-aqua-500 mt-0.5 shrink-0 w-5">{s.n}</span>
+                  <span className="text-xs font-mono text-aqua-500 mt-0.5 shrink-0 w-5">
+                    {s.n}
+                  </span>
                   <div>
                     <p className="text-sm font-medium text-slate-200">{s.title}</p>
                     <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{s.body}</p>

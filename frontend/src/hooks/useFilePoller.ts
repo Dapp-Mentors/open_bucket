@@ -6,12 +6,12 @@ import type { FileRecord } from '@/types'
 
 /**
  * Polls the backend for a single file's status every `interval` ms
- * until it reaches a terminal state (ready or error).
+ * until it reaches a terminal state (ready or error), then stops automatically.
  */
 export function useFilePoller(
   fileId: string | null,
   onUpdate: (record: FileRecord) => void,
-  interval = 1500
+  interval = 1500,
 ) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -23,16 +23,18 @@ export function useFilePoller(
         const record = await getFile(fileId)
         upsertLocalFile(record)
         onUpdate(record)
+        // Stop polling once terminal
         if (record.status === 'ready' || record.status === 'error') {
           if (timerRef.current) clearInterval(timerRef.current)
         }
       } catch {
-        // network hiccup — keep polling
+        // Network hiccup — keep polling
       }
     }
 
     poll()
     timerRef.current = setInterval(poll, interval)
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }

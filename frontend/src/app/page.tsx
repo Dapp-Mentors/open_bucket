@@ -1,7 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, Database, Pin, LayoutGrid } from 'lucide-react'
 import Nav from '@/components/Nav'
 import FileCard from '@/components/FileCard'
@@ -15,13 +14,12 @@ import type { FileRecord } from '@/types'
 import { v4 as uuid } from 'uuid'
 
 export default function Dashboard() {
-  const router = useRouter()
   const [uploadOpen, setUploadOpen] = useState(false)
   const [files, setFiles] = useState<FileRecord[]>([])
   const [activePollId, setActivePollId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastData[]>([])
 
-  // Load from localStorage on mount, then sync with backend
   useEffect(() => {
     const local = loadLocalFiles()
     if (local.length) setFiles(local)
@@ -47,6 +45,7 @@ export default function Dashboard() {
       else next.unshift(record)
       return next
     })
+    upsertLocalFile(record)
     if (record.status === 'ready') {
       addToast('success', `"${record.name}" is pinned and ready.`)
       setActivePollId(null)
@@ -61,10 +60,11 @@ export default function Dashboard() {
 
   const handleUploaded = (fileId: string) => {
     setActivePollId(fileId)
+    setExpandedId(fileId)
     addToast('info', 'Pipeline started — tracking progress…')
   }
 
-  const ready = files.filter((f) => f.status === 'ready').length
+  const ready  = files.filter((f) => f.status === 'ready').length
   const active = files.filter((f) => !['ready', 'error'].includes(f.status)).length
 
   return (
@@ -89,7 +89,8 @@ export default function Dashboard() {
                 <span className="text-aqua-400">and distributed</span> by Sia.
               </h1>
               <p className="text-slate-400 mt-2 text-sm max-w-md">
-                Each upload goes through a live Inngest pipeline — erasure-coded shards, indexer pinning, Indexd metadata. You watch it happen.
+                Each upload runs a live Inngest pipeline — erasure-coded shards, indexer pinning,
+                Indexd metadata. Watch it happen right here.
               </p>
             </div>
             <button
@@ -110,11 +111,14 @@ export default function Dashboard() {
           transition={{ duration: 0.4, delay: 0.1 }}
         >
           {[
-            { icon: LayoutGrid, label: 'Total files',    value: files.length },
-            { icon: Pin,        label: 'Pinned',         value: ready },
-            { icon: Database,   label: 'In pipeline',    value: active },
+            { icon: LayoutGrid, label: 'Total files', value: files.length },
+            { icon: Pin,        label: 'Pinned',      value: ready },
+            { icon: Database,   label: 'In pipeline', value: active },
           ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-navy-800 border border-navy-700/60">
+            <div
+              key={label}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-navy-800 border border-navy-700/60"
+            >
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-700">
                 <Icon className="h-4 w-4 text-aqua-400" />
               </div>
@@ -127,7 +131,7 @@ export default function Dashboard() {
         </motion.div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* File grid */}
+          {/* File list with inline accordion pipeline */}
           <div className="lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-medium text-slate-300">My Files</h2>
@@ -138,51 +142,59 @@ export default function Dashboard() {
               )}
             </div>
 
-            {files.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-navy-700 py-16 text-center"
-              >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-800 border border-navy-700">
-                  <Database className="h-7 w-7 text-slate-600" />
-                </div>
-                <div>
-                  <p className="text-slate-300 font-medium">Nothing here yet</p>
-                  <p className="text-slate-500 text-sm mt-1">Upload a file to see the Sia pipeline in action</p>
-                </div>
-                <button
-                  onClick={() => setUploadOpen(true)}
-                  className="px-4 py-2 text-sm rounded-lg bg-aqua-600/15 border border-aqua-600/30 text-aqua-400 hover:bg-aqua-600/25 transition-colors"
+            <AnimatePresence mode="popLayout">
+              {files.length === 0 ? (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-navy-700 py-16 text-center"
                 >
-                  Upload your first file
-                </button>
-              </motion.div>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {files.map((f) => (
-                  <FileCard
-                    key={f.id}
-                    file={f}
-                    onViewDetails={(id) => router.push(`/pipeline/${id}`)}
-                  />
-                ))}
-              </div>
-            )}
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-800 border border-navy-700">
+                    <Database className="h-7 w-7 text-slate-600" />
+                  </div>
+                  <div>
+                    <p className="text-slate-300 font-medium">Nothing here yet</p>
+                    <p className="text-slate-500 text-sm mt-1">
+                      Upload a file to see the Sia pipeline in action
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setUploadOpen(true)}
+                    className="px-4 py-2 text-sm rounded-lg bg-aqua-600/15 border border-aqua-600/30 text-aqua-400 hover:bg-aqua-600/25 transition-colors"
+                  >
+                    Upload your first file
+                  </button>
+                </motion.div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {files.map((f) => (
+                    <FileCard
+                      key={f.id}
+                      file={f}
+                      expanded={expandedId === f.id}
+                      onToggle={(id) =>
+                        setExpandedId((prev) => (prev === id ? null : id))
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-4">
             <HowItWorks />
 
-            {/* Stack info */}
             <div className="rounded-xl border border-navy-700/60 bg-navy-800/50 p-4 space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-wider">Stack</p>
               {[
-                ['Storage', 'Sia Network'],
-                ['Events', 'Inngest'],
+                ['Storage',  'Sia Network'],
+                ['Events',   'Inngest'],
                 ['Metadata', 'Indexd (simulated)'],
-                ['UI', 'Next.js + Tailwind'],
+                ['UI',       'Next.js + Tailwind'],
               ].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">{k}</span>
@@ -200,7 +212,10 @@ export default function Dashboard() {
         onUploaded={handleUploaded}
       />
 
-      <ToastContainer toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))}
+      />
     </>
   )
 }
