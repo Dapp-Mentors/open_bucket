@@ -1,23 +1,19 @@
 import { inngest } from './client.js'
 import { getSiaClient } from '../sia/client.js'
 import { fileStore } from '../lib/fileStore.js'
+import { readFile } from 'fs/promises'
 import fs from 'fs'
 
 /**
  * Main upload + pin pipeline.
  *
  * Steps:
- *  1. sia-upload-and-pin    – read file from disk, upload bytes to Sia + pin
+ *  1. sia-upload-and-pin    – read file from disk, upload to Sia + pin
  *  2. sia-pin               – record the pin timestamp
  *  3. indexd-register       – mock Indexd registration
- *  4. complete              – mark the file ready + clean up temp
- *
- * IMPORTANT: We do NOT read file bytes into an array and pass them across
- * Inngest step boundaries. Doing so produces a huge JSON payload that
- * exceeds Inngest's response size limit. Instead, each step that needs
- * the file reads it directly from disk — the file path is still valid
- * because the handler and Inngest dev server run in the same container.
+ *  4. complete              – mark file ready + clean up temp
  */
+
 export const uploadAndPinFn = inngest.createFunction(
   { id: 'upload-and-pin', name: 'Upload & Pin File' },
   { event: 'file/upload.requested' },
@@ -38,29 +34,72 @@ export const uploadAndPinFn = inngest.createFunction(
         const sdk = await getSiaClient()
 
         if (!sdk) {
-          // Demo mode: no real Sia connection — simulate with a fake ID
+          // Demo mode — simulate with a fake object ID
           await sleep(1500)
           fileStore.updateStatus(fileId, 'uploading', 65)
           return `demo-sia-${fileId}`
         }
 
-        // Read file from disk directly — avoids serialising huge byte arrays
-        // across Inngest step boundaries
         fileStore.updateStatus(fileId, 'uploading', 40)
-        const buf = fs.readFileSync(filePath)
+
+        console.log(`[upload] Starting upload for ${fileId} (${size} bytes)`)
 
         const { PinnedObject } = await import('@siafoundation/sia-storage')
 
-        const uint8 = new Uint8Array(buf)
-        const webStream = new Blob([uint8]).stream()
+        // Read the entire file into memory first (safest for WASM SDK)
+        console.log('[upload] Reading file into memory...')
+        const fileBuffer = await readFile(filePath)
+        const fileBytes = new Uint8Array(
+          fileBuffer.buffer,
+          fileBuffer.byteOffset,
+          fileBuffer.byteLength,
+        )
+        console.log(`[upload] File read (${fileBytes.byteLength} bytes), creating BYOB stream...`)
 
-        const obj = await sdk.upload(new PinnedObject(), webStream)
+        // === FIXED: Proper byte-mode stream + TypeScript-safe BYOB handling ===
+        const stream = new ReadableStream({
+          type: 'bytes',
+
+          pull(controller) {
+            const byobRequest = controller.byobRequest
+
+            if (byobRequest?.view) {
+              // Safe BYOB path
+              const view = byobRequest.view
+              const bytesToCopy = Math.min(view.byteLength, fileBytes.byteLength)
+
+              new Uint8Array(view.buffer, view.byteOffset, bytesToCopy).set(
+                fileBytes.subarray(0, bytesToCopy)
+              )
+
+              byobRequest.respond(bytesToCopy)
+            } else {
+              // Fallback (should rarely happen)
+              controller.enqueue(fileBytes)
+            }
+
+            controller.close()
+          },
+
+          cancel(reason) {
+            console.warn('[upload] Stream was cancelled:', reason?.message || reason)
+          }
+        })
+
+        const pinnedObj = new PinnedObject()
+
+        console.log('[upload] Calling sdk.upload() with BYOB stream...')
+        const uploadedObj = await sdk.upload(pinnedObj, stream)
+
+        console.log(`[upload] sdk.upload() completed → object id: ${uploadedObj.id ? uploadedObj.id() : 'unknown'}`)
+
         fileStore.updateStatus(fileId, 'uploading', 65)
 
-        // pinObject must be called on the live handle in the same step
-        await sdk.pinObject(obj)
+        console.log('[upload] Pinning object...')
+        await sdk.pinObject(uploadedObj)
+        console.log('[upload] pinObject completed')
 
-        return obj.id()
+        return uploadedObj.id()
       })
 
       // ── Step 2: Record pin timestamp ─────────────────────────────────────────
@@ -77,8 +116,6 @@ export const uploadAndPinFn = inngest.createFunction(
       // ── Step 3: "Indexd" registration (simulated) ────────────────────────────
       const indexdCid = await step.run('indexd-register', async () => {
         fileStore.updateStatus(fileId, 'indexing', 88)
-        // Indexd is a real NCI metadata service but has no public write API.
-        // We simulate the registration here for demo purposes.
         await sleep(700)
         return `did:indexd:${siaObjectId.slice(0, 16)}`
       })
@@ -100,7 +137,6 @@ export const uploadAndPinFn = inngest.createFunction(
 
       return { fileId, siaObjectId, indexdCid, pinnedAt }
     } catch (err) {
-      // ── Global error handler: propagate failure to frontend ────────────────
       const message = err instanceof Error ? err.message : String(err)
       console.error(`[upload-and-pin] Pipeline failed for file ${fileId}:`, message)
       fileStore.setError(fileId, message)
