@@ -1,14 +1,11 @@
 /**
  * Sia SDK singleton.
  *
- * Mirrors the pattern used in SiaFoundation/sia-storage-app:
- *   packages/node-adapters/src/auth.ts
- *
- * Key details sourced directly from their implementation:
- *  - initSia() is called (and guarded) before any Builder/AppKey usage
- *  - AppMetadata.id is Buffer.from(hexString, 'hex') — NOT a raw hex string
- *  - Stored key is loaded via new AppKey(Buffer.from(hexToUint8(keyHex)))
- *  - setLogger() is wired up after initSia() for SDK-level debug output
+ * Exposes three new functions used by the setup flow:
+ *   getApprovalUrl()    – returns the URL the user must open to approve the app
+ *   isApprovalPending() – true while we're waiting for the user to approve
+ *   retryConnection()   – called after the user says they've approved; attempts
+ *                         to complete registration and update the singleton state
  */
 
 import path from 'path'
@@ -36,18 +33,18 @@ const SIA_MODE    = (process.env.SIA_MODE ?? 'auto').toLowerCase()
 // ── Module state ───────────────────────────────────────────────────────────────
 
 let _sdk: Sdk | null = null
+let _builder: Builder | null = null
 let _demoMode = false
 let _reason = ''
 let _initPromise: Promise<Sdk | null> | null = null
 let _sdkInitialized = false
 
+// Approval flow state
+let _approvalPending = false
+let _approvalUrl = ''
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/**
- * Load the native addon and set up the SDK logger.
- * Guarded by a flag — safe to call multiple times, only runs once.
- * Mirrors auth.ts ensureInit() in sia-storage-app.
- */
 async function ensureInit(): Promise<void> {
   if (_sdkInitialized) return
   await initSia()
@@ -55,11 +52,6 @@ async function ensureInit(): Promise<void> {
   _sdkInitialized = true
 }
 
-/**
- * Parse SIA_APP_ID env var into the 32-byte Buffer the Node native SDK requires.
- * The WASM build takes a string; the Node native build takes Buffer.
- * Sourced from auth.ts parseAppMeta():  id: Buffer.from(parsed.appID, 'hex')
- */
 function parseAppIdBuffer(): Buffer {
   if (!APP_ID_HEX || APP_ID_HEX.length !== 64) {
     throw new Error(
@@ -69,18 +61,11 @@ function parseAppIdBuffer(): Buffer {
   return Buffer.from(APP_ID_HEX, 'hex')
 }
 
-/**
- * Load a stored app key from disk.
- * Mirrors auth.ts connectWithKey():
- *   new AppKey(Buffer.from(hexToUint8(keyHex)))
- * hexToUint8 just does Buffer.from(hex, 'hex') under the hood.
- */
 function loadStoredAppKey(): AppKey | null {
   try {
     if (!fs.existsSync(KEY_PATH)) return null
     const hex = fs.readFileSync(KEY_PATH, 'utf8').trim()
     console.log('[Sia] Loading stored app key from', KEY_PATH)
-    // Buffer.from(hex, 'hex') is what hexToUint8() does in their codebase
     return new AppKey(Buffer.from(hex, 'hex'))
   } catch (err) {
     console.warn('[Sia] Could not load stored app key:', (err as Error).message)
@@ -88,16 +73,9 @@ function loadStoredAppKey(): AppKey | null {
   }
 }
 
-/**
- * Persist the app key returned from builder.register() or sdk.appKey().
- * Mirrors auth.ts register():
- *   return uint8ToHex(new Uint8Array(sdk.appKey().export()))
- * uint8ToHex is Buffer.from(bytes).toString('hex').
- */
 function saveAppKey(key: AppKey): void {
-  const exported = key.export() // returns Buffer in the Node native build
+  const exported = key.export()
   fs.mkdirSync(path.dirname(KEY_PATH), { recursive: true })
-  // uint8ToHex equivalent: Buffer → hex string
   fs.writeFileSync(KEY_PATH, Buffer.from(exported).toString('hex'), 'utf8')
   console.log('[Sia] App key saved to', KEY_PATH)
 }
@@ -109,11 +87,24 @@ function loadOrGeneratePhrase(): string {
     return phrase
   }
   const phrase = generateRecoveryPhrase()
-  validateRecoveryPhrase(phrase) // sanity check
+  validateRecoveryPhrase(phrase)
   fs.mkdirSync(path.dirname(PHRASE_PATH), { recursive: true })
   fs.writeFileSync(PHRASE_PATH, phrase, 'utf8')
   console.log('[Sia] Generated and saved new recovery phrase to', PHRASE_PATH)
   return phrase
+}
+
+function makeBuilder(): Builder {
+  const appMeta = {
+    id: parseAppIdBuffer(),
+    name: APP_NAME,
+    description: APP_DESC,
+    serviceUrl: APP_SVC_URL,
+    appId: APP_ID_HEX,
+    logoUrl: '',
+    callbackUrl: APP_SVC_URL,
+  }
+  return new Builder(INDEXER_URL, appMeta)
 }
 
 // ── Core init ──────────────────────────────────────────────────────────────────
@@ -125,65 +116,68 @@ async function initSiaClient(): Promise<Sdk | null> {
     return null
   }
 
-  // Must run before new Builder() or new AppKey() — loads the native addon
   await ensureInit()
 
-  const appMeta = {
-    id: parseAppIdBuffer(), // Buffer, not hex string — this is the critical fix
-    name: APP_NAME,
-    description: APP_DESC,
-    serviceUrl: APP_SVC_URL,
-    // Add missing properties to satisfy AppMetadata type
-    appId: APP_ID_HEX,
-    logoUrl: '',
-    callbackUrl: APP_SVC_URL,
-  }
+  _builder = makeBuilder()
 
-  const builder = new Builder(INDEXER_URL, appMeta)
-
-  // 1. Try stored key first (mirrors auth.ts connectWithKey)
+  // 1. Try stored key first
   const storedKey = loadStoredAppKey()
   if (storedKey) {
     console.log('[Sia] Attempting connection with stored app key…')
-    const sdk = await builder.connected(storedKey)
+    const sdk = await _builder.connected(storedKey)
     if (sdk) {
       console.log('[Sia] Connected with stored app key')
+      _approvalPending = false
+      _approvalUrl = ''
       return sdk
     }
-    console.warn('[Sia] Stored key rejected by indexer — re-registering…')
+    console.warn('[Sia] Stored key rejected — starting fresh registration…')
   }
 
-  // 2. Registration flow (mirrors auth.ts requestConnection + waitForApproval + register)
+  // 2. Start registration flow — request the connection URL
   console.log('[Sia] Starting registration flow…')
   const phrase = loadOrGeneratePhrase()
 
   try {
-    await builder.requestConnection()
-    const approvalUrl = builder.responseUrl()
+    await _builder.requestConnection()
+    const url = _builder.responseUrl()
+
+    _approvalUrl = url
+    _approvalPending = true
+
     console.log('')
     console.log('╔══════════════════════════════════════════════════════════════╗')
     console.log('║               [Sia] ACTION REQUIRED                          ║')
     console.log('║  Open this URL to approve the app:                           ║')
-    console.log(`║  ${approvalUrl.padEnd(60)}║`)
+    console.log(`║  ${url.padEnd(60)}║`)
     console.log('╚══════════════════════════════════════════════════════════════╝')
     console.log('')
-    console.log('[Sia] Waiting for approval…')
-    await builder.waitForApproval()
-    console.log('[Sia] Approval received.')
+    console.log('[Sia] Waiting for user approval via UI…')
+
+    // Do NOT block here — the frontend will poll /api/sia/poll-connection
+    // which calls retryConnection() once the user has approved.
+    return null
   } catch (err) {
-    // Already approved on a previous boot — register() will succeed anyway
     console.warn(
-      '[Sia] requestConnection/waitForApproval skipped (likely already approved):',
+      '[Sia] requestConnection failed — may already be approved:',
       (err as Error).message
     )
   }
 
-  const sdk = await builder.register(phrase)
-
-  // Persist the derived key so we skip this flow on the next boot
-  saveAppKey(sdk.appKey())
-  console.log('[Sia] Registration complete — app key stored.')
-  return sdk
+  // 3. If requestConnection threw, try registering immediately (already approved)
+  try {
+    const sdk = await _builder.register(phrase)
+    saveAppKey(sdk.appKey())
+    _approvalPending = false
+    _approvalUrl = ''
+    console.log('[Sia] Registration complete — app key stored.')
+    return sdk
+  } catch (err) {
+    console.error('[Sia] register() failed:', (err as Error).message)
+    _demoMode = true
+    _reason = (err as Error).message
+    return null
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -200,8 +194,47 @@ export function getSiaReason(): string {
   return _reason
 }
 
+export function isApprovalPending(): boolean {
+  return _approvalPending
+}
+
+export function getApprovalUrl(): string {
+  return _approvalUrl
+}
+
 /**
- * Returns the live Sdk instance, or null in demo mode.
+ * Called by POST /api/sia/poll-connection.
+ *
+ * If we're still waiting for approval, attempts to complete the register()
+ * call. If it succeeds, the singleton state is updated and subsequent calls
+ * to isDemoMode() / isApprovalPending() reflect the new state.
+ */
+export async function retryConnection(): Promise<void> {
+  if (_sdk) return // already connected
+  if (!_approvalPending) return // nothing to retry
+  if (!_builder) return // init hasn't run yet
+
+  console.log('[Sia] retryConnection() — attempting register()…')
+
+  const phrase = loadOrGeneratePhrase()
+
+  try {
+    const sdk = await _builder.register(phrase)
+    saveAppKey(sdk.appKey())
+    _sdk = sdk
+    _demoMode = false
+    _reason = ''
+    _approvalPending = false
+    _approvalUrl = ''
+    console.log('[Sia] retryConnection() succeeded — app is now connected.')
+  } catch (err) {
+    // Not approved yet — log quietly and leave _approvalPending true
+    console.log('[Sia] retryConnection() — not approved yet:', (err as Error).message)
+  }
+}
+
+/**
+ * Returns the live Sdk instance, or null in demo/pending mode.
  * Safe to call multiple times — init only runs once.
  */
 export async function getSiaClient(): Promise<Sdk | null> {
@@ -212,7 +245,7 @@ export async function getSiaClient(): Promise<Sdk | null> {
     _initPromise = initSiaClient()
       .then((sdk) => {
         _sdk = sdk
-        if (!sdk) {
+        if (!sdk && !_approvalPending) {
           _demoMode = true
           if (!_reason) _reason = 'Sia connection unavailable'
         }

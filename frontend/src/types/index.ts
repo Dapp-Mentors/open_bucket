@@ -21,6 +21,10 @@ export interface SiaStatus {
   configMode?: string
   indexer: string
   reason?: string
+  /** True while we're waiting for the user to approve the app on the indexer */
+  approvalPending?: boolean
+  /** The URL the user must open to approve the app */
+  approvalUrl?: string
 }
 
 export const PIPELINE_STEPS = [

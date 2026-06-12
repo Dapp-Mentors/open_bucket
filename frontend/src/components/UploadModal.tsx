@@ -13,7 +13,7 @@ interface UploadModalProps {
 
 type ModalPhase = 'idle' | 'selected' | 'uploading' | 'queued' | 'error'
 
-// ─── Particle canvas animation ───────────────────────────────────────────────
+// ─── Particle canvas ──────────────────────────────────────────────────────────
 
 interface Particle {
   x: number; y: number
@@ -35,51 +35,43 @@ function mkParticle(w: number, h: number): Particle {
 
 function ParticleCanvas({ running }: { running: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef    = useRef<number | null>(null)
+  const rafRef = useRef<number | null>(null)
   const particles = useRef<Particle[]>([])
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !running) return
+    if (!canvas || !running) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      return
+    }
     const ctx = canvas.getContext('2d')!
-    const W = canvas.width, H = canvas.height
+    const W = canvas.width
+    const H = canvas.height
 
     particles.current = Array.from({ length: 36 }, () => mkParticle(W, H))
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H)
-
       particles.current.forEach((p) => {
-        p.x += p.vx
-        p.y += p.vy
-        p.life += 0.008
+        p.x += p.vx; p.y += p.vy; p.life += 0.008
         if (p.x < 0 || p.x > W || p.y < 0 || p.y > H || p.life > p.maxLife) {
-          Object.assign(p, mkParticle(W, H))
-          p.life = 0
+          Object.assign(p, mkParticle(W, H)); p.life = 0
         }
         const alpha = Math.sin((p.life / p.maxLife) * Math.PI) * 0.75
         ctx.globalAlpha = alpha
         ctx.fillStyle = '#16a298'
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill()
       })
-
-      // Connectors
       const ps = particles.current
-      ctx.strokeStyle = '#16a298'
-      ctx.lineWidth = 0.4
+      ctx.strokeStyle = '#16a298'; ctx.lineWidth = 0.4
       for (let i = 0; i < ps.length; i++) {
         for (let j = i + 1; j < ps.length; j++) {
-          const dx = ps[i].x - ps[j].x
-          const dy = ps[i].y - ps[j].y
-          const d  = Math.sqrt(dx * dx + dy * dy)
+          const dx = ps[i].x - ps[j].x, dy = ps[i].y - ps[j].y
+          const d = Math.sqrt(dx * dx + dy * dy)
           if (d < 70) {
             ctx.globalAlpha = (1 - d / 70) * 0.18
-            ctx.beginPath()
-            ctx.moveTo(ps[i].x, ps[i].y)
-            ctx.lineTo(ps[j].x, ps[j].y)
-            ctx.stroke()
+            ctx.beginPath(); ctx.moveTo(ps[i].x, ps[i].y)
+            ctx.lineTo(ps[j].x, ps[j].y); ctx.stroke()
           }
         }
       }
@@ -88,9 +80,7 @@ function ParticleCanvas({ running }: { running: boolean }) {
     }
 
     draw()
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    }
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   }, [running])
 
   return (
@@ -106,13 +96,13 @@ function ParticleCanvas({ running }: { running: boolean }) {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function UploadModal({ open, onClose, onUploaded }: UploadModalProps) {
-  const [phase,    setPhase]    = useState<ModalPhase>('idle')
-  const [file,     setFile]     = useState<File | null>(null)
+  const [phase, setPhase] = useState<ModalPhase>('idle')
+  const [file, setFile] = useState<File | null>(null)
   const [progress, setProgress] = useState(0)
   const [dragging, setDragging] = useState(false)
-  const [errMsg,   setErrMsg]   = useState('')
+  const [errMsg, setErrMsg] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const fakeRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fakeRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const reset = () => {
     setPhase('idle'); setFile(null); setProgress(0); setErrMsg('')
@@ -121,15 +111,13 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
 
   const handleClose = () => { reset(); onClose() }
 
-  // Reset state whenever modal re-opens
   useEffect(() => { if (open) reset() }, [open])
 
   const pickFile = (f: File) => { setFile(f); setPhase('selected') }
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragging(false)
-    const f = e.dataTransfer.files[0]
-    if (f) pickFile(f)
+    const f = e.dataTransfer.files[0]; if (f) pickFile(f)
   }, [])
 
   const handleUpload = async () => {
@@ -137,8 +125,15 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
     setPhase('uploading')
     setProgress(0)
 
+    // Fake progress up to 88% while the real upload runs
     fakeRef.current = setInterval(() => {
-      setProgress((p) => Math.min(p + Math.random() * 7 + 2, 88))
+      setProgress((p) => {
+        if (p >= 88) {
+          if (fakeRef.current) clearInterval(fakeRef.current)
+          return 88
+        }
+        return Math.min(p + Math.random() * 7 + 2, 88)
+      })
     }, 140)
 
     try {
@@ -146,7 +141,8 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
       if (fakeRef.current) { clearInterval(fakeRef.current); fakeRef.current = null }
       setProgress(100)
       setPhase('queued')
-      setTimeout(() => { handleClose(); onUploaded(fileId) }, 1100)
+      // Give the user a moment to see 100%, then close and hand off
+      setTimeout(() => { handleClose(); onUploaded(fileId) }, 900)
     } catch (err) {
       if (fakeRef.current) { clearInterval(fakeRef.current); fakeRef.current = null }
       setErrMsg(err instanceof Error ? err.message : 'Upload failed')
@@ -158,7 +154,6 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm"
             initial={{ opacity: 0 }}
@@ -167,7 +162,6 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
             onClick={handleClose}
           />
 
-          {/* Panel */}
           <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
             initial={{ opacity: 0 }}
@@ -197,6 +191,7 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
               </div>
 
               <div className="p-6 space-y-4">
+
                 {/* ── Idle / selected ── */}
                 {(phase === 'idle' || phase === 'selected') && (
                   <div
@@ -204,13 +199,12 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                     onDragLeave={() => setDragging(false)}
                     onDrop={onDrop}
                     onClick={() => inputRef.current?.click()}
-                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-all ${
-                      dragging
-                        ? 'border-aqua-500 bg-aqua-500/5'
-                        : phase === 'selected'
+                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-all ${dragging
+                      ? 'border-aqua-500 bg-aqua-500/5'
+                      : phase === 'selected'
                         ? 'border-aqua-600/50 bg-aqua-600/5'
                         : 'border-navy-600 hover:border-navy-500 hover:bg-navy-700/30'
-                    }`}
+                      }`}
                   >
                     <input
                       ref={inputRef}
@@ -218,16 +212,13 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                       className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f) }}
                     />
-
                     {phase === 'selected' && file ? (
                       <>
                         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aqua-600/15 border border-aqua-600/30">
                           <FileText className="h-6 w-6 text-aqua-400" />
                         </div>
                         <div className="text-center">
-                          <p className="font-medium text-slate-200 text-sm truncate max-w-[240px]">
-                            {file.name}
-                          </p>
+                          <p className="font-medium text-slate-200 text-sm truncate max-w-[240px]">{file.name}</p>
                           <p className="text-xs text-slate-400 mt-0.5">
                             {formatBytes(file.size)} · {file.type || 'unknown type'}
                           </p>
@@ -241,9 +232,7 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                         </div>
                         <div className="text-center">
                           <p className="text-sm text-slate-300 font-medium">Drop a file here</p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            or click to browse · up to 100 MB
-                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">or click to browse · up to 100 MB</p>
                         </div>
                       </>
                     )}
@@ -263,20 +252,24 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                       </div>
                     </div>
 
-                    {/* Particle canvas */}
-                    <ParticleCanvas running={phase === 'uploading'} />
+                    <ParticleCanvas running />
 
-                    {/* Progress bar */}
-                    <div className="h-1.5 w-full rounded-full bg-navy-700 overflow-hidden">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-aqua-700 to-aqua-400"
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.3, ease: 'easeOut' }}
-                      />
+                    {/* Progress bar — plain CSS transition; Framer Motion struggles
+                        interpolating percentage strings without a pixel-width parent */}
+                    <div className="w-full">
+                      <div className="relative h-1.5 w-full rounded-full bg-navy-700 overflow-hidden">
+                        <div
+                          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-aqua-700 to-aqua-400"
+                          style={{
+                            width: `${Math.round(progress)}%`,
+                            transition: 'width 150ms linear'
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-400 text-right mt-1 font-mono tabular-nums">
+                        {Math.round(progress)}%
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-400 text-center font-mono">
-                      {Math.round(progress)}%
-                    </p>
                   </div>
                 )}
 

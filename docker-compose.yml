@@ -27,9 +27,9 @@ services:
       #   demo  = skip connection, always use local file storage
       SIA_MODE: "auto"
       # A stable App ID (32 bytes hex) — replace with your own for production
-      SIA_APP_ID: "6f70656e6275636b657400000000000000000000000000000000000000000000"
-      SIA_APP_NAME: "OpenBucket"
-      SIA_APP_DESCRIPTION: "Decentralized file pinning demo"
+      SIA_APP_ID: "4f70656e6275636b657400000000000000000000000000000000000000000000"
+      SIA_APP_NAME: "OpenBucket Production Demo"
+      SIA_APP_DESCRIPTION: "Decentralized file pinning demo on Sia, built by Daltonic"
       SIA_APP_SERVICE_URL: "http://localhost:3000"
     depends_on:
       - inngest
