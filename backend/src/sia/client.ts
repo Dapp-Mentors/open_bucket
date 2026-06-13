@@ -164,7 +164,7 @@ async function initSiaClient(): Promise<Sdk | null> {
     console.log('╔══════════════════════════════════════════════════════════════╗')
     console.log('║               [Sia] ACTION REQUIRED                          ║')
     console.log('║  Open this URL to approve the app:                           ║')
-    console.log(`║  ${approvalUrl.padEnd(60)}║`)
+    console.log(`║  ${approvalUrl.padEnd(60)}                                   ║`)
     console.log('╚══════════════════════════════════════════════════════════════╝')
     console.log('')
     console.log('[Sia] Waiting for approval…')
