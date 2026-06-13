@@ -1,14 +1,6 @@
 /**
  * Sia SDK singleton.
- *
- * Mirrors the pattern used in SiaFoundation/sia-storage-app:
- *   packages/node-adapters/src/auth.ts
- *
- * Key details sourced directly from their implementation:
- *  - initSia() is called (and guarded) before any Builder/AppKey usage
- *  - AppMetadata.id is Buffer.from(hexString, 'hex') — NOT a raw hex string
- *  - Stored key is loaded via new AppKey(Buffer.from(hexToUint8(keyHex)))
- *  - setLogger() is wired up after initSia() for SDK-level debug output
+ * Mirrors the pattern in SiaFoundation/sia-storage-app (packages/node-adapters/src/auth.ts).
  */
 
 import path from 'path'
@@ -43,11 +35,7 @@ let _sdkInitialized = false
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/**
- * Load the native addon and set up the SDK logger.
- * Guarded by a flag — safe to call multiple times, only runs once.
- * Mirrors auth.ts ensureInit() in sia-storage-app.
- */
+/** Load native addon and configure SDK logger (guarded, runs once). */
 async function ensureInit(): Promise<void> {
   if (_sdkInitialized) return
   await initSia()
@@ -55,11 +43,7 @@ async function ensureInit(): Promise<void> {
   _sdkInitialized = true
 }
 
-/**
- * Parse SIA_APP_ID env var into the 32-byte Buffer the Node native SDK requires.
- * The WASM build takes a string; the Node native build takes Buffer.
- * Sourced from auth.ts parseAppMeta():  id: Buffer.from(parsed.appID, 'hex')
- */
+/** Parse SIA_APP_ID into a 32‑byte Buffer (Node native build requires Buffer, WASM takes string). */
 function parseAppIdBuffer(): Buffer {
   if (!APP_ID_HEX || APP_ID_HEX.length !== 64) {
     throw new Error(
@@ -69,18 +53,12 @@ function parseAppIdBuffer(): Buffer {
   return Buffer.from(APP_ID_HEX, 'hex')
 }
 
-/**
- * Load a stored app key from disk.
- * Mirrors auth.ts connectWithKey():
- *   new AppKey(Buffer.from(hexToUint8(keyHex)))
- * hexToUint8 just does Buffer.from(hex, 'hex') under the hood.
- */
+/** Load a stored app key from disk (mirrors auth.ts connectWithKey). */
 function loadStoredAppKey(): AppKey | null {
   try {
     if (!fs.existsSync(KEY_PATH)) return null
     const hex = fs.readFileSync(KEY_PATH, 'utf8').trim()
     console.log('[Sia] Loading stored app key from', KEY_PATH)
-    // Buffer.from(hex, 'hex') is what hexToUint8() does in their codebase
     return new AppKey(Buffer.from(hex, 'hex'))
   } catch (err) {
     console.warn('[Sia] Could not load stored app key:', (err as Error).message)
@@ -88,16 +66,10 @@ function loadStoredAppKey(): AppKey | null {
   }
 }
 
-/**
- * Persist the app key returned from builder.register() or sdk.appKey().
- * Mirrors auth.ts register():
- *   return uint8ToHex(new Uint8Array(sdk.appKey().export()))
- * uint8ToHex is Buffer.from(bytes).toString('hex').
- */
+/** Persist the app key returned from builder.register(). */
 function saveAppKey(key: AppKey): void {
-  const exported = key.export() // returns Buffer in the Node native build
+  const exported = key.export()
   fs.mkdirSync(path.dirname(KEY_PATH), { recursive: true })
-  // uint8ToHex equivalent: Buffer → hex string
   fs.writeFileSync(KEY_PATH, Buffer.from(exported).toString('hex'), 'utf8')
   console.log('[Sia] App key saved to', KEY_PATH)
 }

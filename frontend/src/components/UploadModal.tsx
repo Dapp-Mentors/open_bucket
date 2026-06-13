@@ -13,7 +13,7 @@ interface UploadModalProps {
 
 type ModalPhase = 'idle' | 'selected' | 'uploading' | 'queued' | 'error'
 
-// ─── Particle canvas animation ───────────────────────────────────────────────
+// ─── Particles ───────────────────────────────────────────────────────────────
 
 interface Particle {
   x: number; y: number
@@ -103,7 +103,7 @@ function ParticleCanvas({ running }: { running: boolean }) {
   )
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────────────
+// ─── Modal ───────────────────────────────────────────────────────────────────
 
 export default function UploadModal({ open, onClose, onUploaded }: UploadModalProps) {
   const [phase,    setPhase]    = useState<ModalPhase>('idle')
@@ -182,22 +182,21 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
               transition={{ duration: 0.22, ease: 'easeOut' }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-navy-700/60">
-                <div>
-                  <h2 className="font-semibold text-slate-100">Upload a file</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Pinned to Sia via Inngest pipeline</p>
-                </div>
-                <button
-                  onClick={handleClose}
-                  className="p-1.5 rounded-lg hover:bg-navy-700 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-navy-700/60">
+        <div>
+          <h2 className="font-semibold text-slate-100">Upload a file</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Pinned to Sia via Inngest pipeline</p>
+        </div>
+        <button
+          onClick={handleClose}
+          className="p-1.5 rounded-lg hover:bg-navy-700 text-slate-400 hover:text-slate-200 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
 
-              <div className="p-6 space-y-4">
-                {/* ── Idle / selected ── */}
+      <div className="p-6 space-y-4">
+        {/* ── Idle/Selected ── */}
                 {(phase === 'idle' || phase === 'selected') && (
                   <div
                     onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -263,7 +262,7 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                       </div>
                     </div>
 
-                    {/* Particle canvas */}
+                    {/* Particles */}
                     <ParticleCanvas running={phase === 'uploading'} />
 
                     {/* Progress bar */}
@@ -280,7 +279,7 @@ export default function UploadModal({ open, onClose, onUploaded }: UploadModalPr
                   </div>
                 )}
 
-                {/* ── Queued / success ── */}
+                {/* ── Queued ── */}
                 {phase === 'queued' && (
                   <div className="flex flex-col items-center gap-2 py-5">
                     <motion.div

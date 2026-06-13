@@ -7,19 +7,8 @@ import fs from 'fs'
 /**
  * Upload + Pin Pipeline
  *
- * Deduplication strategy:
- *  - Inngest concurrency key (event.data.fileId) prevents parallel runs
- *  - DB-level idempotency check at the top handles the rare case where Inngest
- *    replays a completed run (e.g. after a crash mid-step). The in-memory lock
- *    that was here before was removed — it doesn't survive Inngest's step
- *    re-execution model and caused the "stuck" bug where a second execution
- *    returned { skipped: true } before writing the 'ready' status to the DB.
- *
- * Steps:
- *  1. sia-upload-and-pin    – read file from disk, upload to Sia, pin object
- *  2. sia-pin               – record the pin timestamp
- *  3. indexd-register       – mock Indexd registration
- *  4. complete              – mark file ready + clean up temp file
+ * Dedup: Inngest concurrency key prevents parallel runs; DB‑level check
+ * handles replayed runs after crash. Steps: upload → pin → register → clean up.
  */
 
 export const uploadAndPinFn = inngest.createFunction(
@@ -42,8 +31,7 @@ export const uploadAndPinFn = inngest.createFunction(
       size: number
     }
 
-    // DB-level idempotency guard — if this file already finished (e.g. Inngest
-    // replayed a completed run), just return the stored result and exit early.
+    // Skip if already completed (Inngest replay guard)
     const existing = fileStore.get(fileId)
     if (existing?.status === 'ready') {
       console.log(`[upload][idempotent] file ${fileId} already ready — returning stored result`)
@@ -58,7 +46,7 @@ export const uploadAndPinFn = inngest.createFunction(
     try {
       console.log(`[upload][debug] pipeline started`, { fileId, fileName, size, mimeType })
 
-      // ── Step 1: Upload to Sia + pin ────────────────────────────────────────
+      // ── Step 1: Upload ─────────────────────────────────────────────────────
       const siaObjectId = await step.run('sia-upload-and-pin', async () => {
         fileStore.updateStatus(fileId, 'uploading', 10)
 
@@ -85,9 +73,7 @@ export const uploadAndPinFn = inngest.createFunction(
         const { PinnedObject } = await import('@siafoundation/sia-storage')
         const pinnedObj = new PinnedObject()
 
-        // Simple enqueue stream — no BYOB. The BYOB path in the Sia SDK
-        // (type: 'bytes') can hang if the SDK doesn't issue a byobRequest,
-        // leaving the upload stuck indefinitely. This is the safe default.
+        // Plain enqueue stream — BYOB can hang if SDK never issues byobRequest
         const stream = new ReadableStream({
           start(controller) {
             controller.enqueue(fileBytes)
@@ -115,7 +101,7 @@ export const uploadAndPinFn = inngest.createFunction(
         return objectId
       })
 
-      // ── Step 2: Record pin timestamp ───────────────────────────────────────
+      // ── Step 2: Pin ────────────────────────────────────────────────────────
       const pinnedAt = await step.run('sia-pin', async () => {
         fileStore.updateStatus(fileId, 'pinning', 75)
 
@@ -126,7 +112,7 @@ export const uploadAndPinFn = inngest.createFunction(
         return new Date().toISOString()
       })
 
-      // ── Step 3: Indexd registration (mock) ─────────────────────────────────
+      // ── Step 3: Indexd (mock) ──────────────────────────────────────────────
       const indexdCid = await step.run('indexd-register', async () => {
         fileStore.updateStatus(fileId, 'indexing', 88)
         await sleep(600)
@@ -145,7 +131,7 @@ export const uploadAndPinFn = inngest.createFunction(
           fs.unlinkSync(filePath)
           console.log('[upload][debug] temp file cleaned')
         } catch {
-          // already gone — fine
+          // already gone
         }
       })
 

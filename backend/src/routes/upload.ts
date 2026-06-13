@@ -25,7 +25,7 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     const fileId = uuidv4()
 
-    // Check if we're in demo mode — if so, copy the file to persistent storage
+    // In demo mode, persist a local copy for downloads
     const sdk = await getSiaClient()
     const isDemo = !sdk
 
@@ -51,7 +51,7 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     fileStore.add(record)
 
-    // Fire the Inngest event to kick off the pipeline
+    // Fire Inngest pipeline
     await inngest.send({
       name: 'file/upload.requested',
       data: {

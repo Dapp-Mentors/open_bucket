@@ -1,7 +1,5 @@
 /**
- * SQLite-backed file store with optional local file storage for demo mode.
- * In live mode, files are uploaded to Sia and the local copy is cleaned up.
- * In demo mode, files are kept at a persistent path so downloads still work.
+ * SQLite-backed file store with local file fallback for demo mode.
  */
 
 import Database from 'better-sqlite3'
@@ -24,12 +22,12 @@ export interface FileRecord {
   pinnedAt?: string
   indexdCid?: string
   error?: string
-  /** Path to the local file copy (used by demo mode for downloads) */
+  /** Path to the local file copy (demo mode) */
   dataPath?: string
 }
 
 
-/** Coerce undefined values to null for SQLite compatibility */
+/** Convert undefined to null for SQLite compatibility */
 function toRow(record: FileRecord) {
   return {
     id: record.id,
@@ -52,15 +50,9 @@ class FileStore {
   private db: Database.Database
 
   constructor() {
-    // Ensure parent directory exists
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })
-
     this.db = new Database(DB_PATH)
-
-    // Enable WAL mode for better concurrent access
     this.db.pragma('journal_mode = WAL')
-
-    // Create table if it doesn't exist
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS files (
         id         TEXT PRIMARY KEY,
@@ -78,14 +70,12 @@ class FileStore {
         dataPath   TEXT
       )
     `)
-
-    // Migrate: add dataPath column if it doesn't exist (for existing DBs)
+    // Migrate: add dataPath if missing (existing DBs)
     try {
       this.db.exec('ALTER TABLE files ADD COLUMN dataPath TEXT')
     } catch {
-      // Column already exists — fine
+      // already exists
     }
-
     console.log('[FileStore] SQLite database ready at', DB_PATH)
   }
 
@@ -150,14 +140,9 @@ class FileStore {
   }
 
   delete(id: string): boolean {
-    // Delete the local file if it exists
     const rec = this.get(id)
     if (rec?.dataPath) {
-      try {
-        fs.unlinkSync(rec.dataPath)
-      } catch {
-        // already gone, fine
-      }
+      try { fs.unlinkSync(rec.dataPath) } catch { /* already gone */ }
     }
     const stmt = this.db.prepare('DELETE FROM files WHERE id = ?')
     const info = stmt.run(id)
@@ -169,7 +154,7 @@ class FileStore {
   }
 }
 
-/** Convert SQLite null values back to undefined for JS consumers */
+/** Convert SQLite null values to undefined */
 function nullToUndefined(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(row)) {

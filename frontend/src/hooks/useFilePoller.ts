@@ -3,10 +3,7 @@ import { useEffect, useRef } from 'react'
 import { getFile } from '@/lib/api'
 import type { FileRecord } from '@/types'
 
-/**
- * Polls the backend for a single file's status every `interval` ms
- * until it reaches a terminal state (ready or error), then stops automatically.
- */
+/** Poll backend until file status is terminal (ready/error). */
 export function useFilePoller(
   fileId: string | null,
   onUpdate: (record: FileRecord) => void,
@@ -21,7 +18,6 @@ export function useFilePoller(
       try {
         const record = await getFile(fileId)
         onUpdate(record)
-        // Stop polling once terminal
         if (record.status === 'ready' || record.status === 'error') {
           if (timerRef.current) clearInterval(timerRef.current)
         }
