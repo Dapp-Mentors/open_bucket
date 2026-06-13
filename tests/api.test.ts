@@ -1,10 +1,6 @@
-/**
- * Tests for frontend api.ts helpers.
- * fetch() is mocked — we only test the request shape and return-value logic,
- * not network I/O.
- */
+/** Tests for frontend api.ts helpers (fetch is mocked, only tests logic). */
 
-// Minimal types inline so we don't need the full Next.js build
+// Minimal types inline (avoids full Next.js build)
 interface FileRecord {
   id: string
   name: string
@@ -23,12 +19,12 @@ interface SiaStatus {
   reason?: string
 }
 
-// Replicate the helpers we can test without fetch
+// Replicated helpers (testable without fetch)
 function downloadUrl(id: string, base = 'http://localhost:4000') {
   return `${base}/api/files/${id}/download`
 }
 
-// Replicate getSiaStatus fallback value (the real one returns this on fetch failure)
+// getSiaStatus fallback value (returned on fetch failure)
 const SIA_FALLBACK: SiaStatus = { connected: false, mode: 'demo', indexer: 'unknown' }
 
 describe('downloadUrl', () => {

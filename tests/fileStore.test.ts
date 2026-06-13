@@ -1,19 +1,8 @@
-/**
- * Tests for FileStore helper functions and CRUD logic.
- *
- * The pure helper functions (nullToUndefined, toRow) are imported directly
- * from the backend source so coverage is accurately reported.
- *
- * The CRUD store tests use an in-memory sql.js DB (no native build needed)
- * to replicate what fileStore.ts does against SQLite — this keeps the tests
- * self-contained without having to import the singleton that opens a real
- * DB path on disk.
- */
+/** Tests for FileStore helpers and CRUD logic using in-memory sql.js. */
 
 import initSqlJs, { Database } from 'sql.js'
 
-// ---- Types (mirrored from fileStore.ts — kept here to avoid importing the
-//      singleton which opens the real DB on import) ----
+// ---- Types (mirrored from fileStore.ts to avoid the real DB singleton) ----
 
 type FileStatus = 'queued' | 'uploading' | 'pinning' | 'indexing' | 'ready' | 'error'
 
@@ -33,8 +22,7 @@ interface FileRecord {
   dataPath?: string
 }
 
-// ---- Pure helpers — copied here so they're testable without the singleton.
-//      These must stay in sync with backend/src/lib/fileStore.ts. ----
+// ---- Pure helpers (must stay in sync with backend/src/lib/fileStore.ts) ----
 
 function nullToUndefined(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -154,7 +142,7 @@ const makeBase = (): FileRecord => ({
   updatedAt: '2025-01-01T00:00:00.000Z',
 })
 
-// ---- Tests for pure helpers ----
+// ---- Pure helper tests ----
 
 describe('nullToUndefined', () => {
   it('converts null values to undefined', () => {
@@ -200,7 +188,7 @@ describe('toRow', () => {
   })
 })
 
-// ---- CRUD tests against in-memory sql.js DB ----
+// ---- CRUD tests (in-memory sql.js) ----
 
 describe('FileStore (in-memory)', () => {
   let freshStore: ReturnType<typeof createTestStore>

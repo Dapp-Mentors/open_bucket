@@ -1,12 +1,8 @@
-/**
- * Tests for config.ts path helpers.
- * These are pure string/path computations — no I/O, no external services.
- */
+/** Tests for config.ts path helpers (pure computations, no I/O). */
 
 import path from 'path'
 
-// We replicate the logic here so the test can control env vars
-// without side-effects on the real module singleton.
+// Replicated logic so env vars are controllable without side-effects
 function resolveConfig(env: Record<string, string | undefined>) {
   const DATA_DIR = env.DATA_DIR ?? path.resolve('./data')
   const DB_PATH  = env.FILE_DB_PATH ?? path.join(DATA_DIR, 'files.db')

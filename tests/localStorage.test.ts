@@ -1,7 +1,7 @@
 import { loadLocalFiles, saveLocalFiles, upsertLocalFile } from '../frontend/src/lib/storage'
 import type { FileRecord } from '../frontend/src/types'
 
-// Minimal mock for localStorage
+// Minimal localStorage mock
 const store: Record<string, string> = {}
 const localStorageMock = {
   getItem: (key: string) => store[key] ?? null,
