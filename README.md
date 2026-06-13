@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://youtu.be/gr8vbJhqoEA" target="_blank">
-    <img src="https://img.youtube.com/vi/gr8vbJhqoEA/maxresdefault.jpg"
+    <img src="./demo.png"
          alt="OpenBucket demo — upload a file and watch it move through the Sia pinning pipeline"
          width="720" style="border-radius: 12px;" />
   </a>
