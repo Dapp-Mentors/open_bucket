@@ -105,6 +105,15 @@ openbucket/
 │           ├── upload.ts         # POST /api/upload (multipart)
 │           ├── files.ts          # GET /api/files, /api/files/:id, /api/files/:id/download
 │           └── sia.ts            # GET /api/sia/status
+├── tests/
+│   ├── README.md
+│   ├── package.json
+│   ├── api.test.ts
+│   ├── config.test.ts
+│   ├── fileStore.test.ts
+│   ├── localStorage.test.ts
+│   ├── pipelineSteps.test.ts
+│   └── storage.test.ts
 └── frontend/
     ├── Dockerfile
     ├── package.json
