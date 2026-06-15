@@ -121,10 +121,7 @@ openbucket/
         ├── app/
         │   ├── globals.css
         │   ├── layout.tsx
-        │   ├── page.tsx                  # Screen 1: Dashboard
-        │   └── pipeline/
-        │       └── [id]/
-        │           └── page.tsx          # Screen 2: Dedicated pipeline detail page
+        │   └── page.tsx                  # Main Screen
         ├── components/
         │   ├── Nav.tsx
         │   ├── FileCard.tsx
